@@ -177,8 +177,7 @@ def slurp(filename):
 
 def dedup(seq):
     seen = set()
-    seen_add = seen.add
-    return [x for x in seq if not (x in seen or seen_add(x))]
+    return [x for x in seq if x not in seen and not seen.add(x)]
 
 FormatTree = namedtuple("FormatTree", ["style", "children"])
 Style = namedtuple("Style", ["type", "value"])
@@ -213,10 +212,10 @@ def parse_style(sty):
         return "", Style(types[sty], True)
     if sty in colors:
         return "", Style("color", colors[sty])
-    if sty.startswith("#") and len(sty) in [4, 7]:
+    if sty.startswith("#") and len(sty) in {4, 7}:
         return "", Style("color", sty[1:])
     # TODO more style parse
-    raise ValueError("Unknown style: " + sty)
+    raise ValueError(f"Unknown style: {sty}")
 
 
 def localize(i18n, string):
@@ -274,8 +273,7 @@ def format_string(root_data, string):
                 if last_node.style.type == style.type:
                     break
                 tmp_stylestack.append(last_node.style)
-        for sty in tmp_stylestack:
-            style_stack.append(FormatTree(sty, []))
+        style_stack.extend(FormatTree(sty, []) for sty in tmp_stylestack)
         if style.value is None:
             if text:
                 style_stack[-1].children.append(text)
@@ -324,7 +322,7 @@ def fetch_recipe(root_data, recipe):
         while data["type"] == "botania:gog_alternation":
             data = data["base"]
         return data
-    raise ValueError("Recipe " + recipe + " not found")
+    raise ValueError(f"Recipe {recipe} not found")
 
 
 def fetch_recipe_result(root_data, recipe):
@@ -340,11 +338,11 @@ def fetch_recipe_result(root_data, recipe):
 def localize_item(root_data, item):
     # TODO hack
     item = re.sub("{.*", "", item.replace(":", "."))
-    block = "block." + item
+    block = f"block.{item}"
     block_l = localize(root_data["i18n"], block)
     if block_l != block:
         return block_l
-    return localize(root_data["i18n"], "item." + item)
+    return localize(root_data["i18n"], f"item.{item}")
 
 
 def localize_brew(root_data, brew):
@@ -383,8 +381,7 @@ def fetch_infusion(rd, page):
         lrecs = [recs] if isinstance(recs, str) else recs
         recipes = [fetch_recipe(rd, recipe) for recipe in lrecs]
     for recipe in recipes:
-        rec = {}
-        rec["out"] = localize_item(rd, recipe["output"]["item"])
+        rec = {"out": localize_item(rd, recipe["output"]["item"])}
         if "catalyst" in recipe:
             rec["catalyst"] = localize_item(rd, recipe["catalyst"]["block"])
         page["loc_recipes"].append(rec)
@@ -442,7 +439,7 @@ page_types = {
 
 
 def walk_dir(root_dir, prefix):
-    search_dir = root_dir + "/" + prefix
+    search_dir = f"{root_dir}/{prefix}"
     for fh in os.scandir(search_dir):
         if fh.is_dir():
             yield from walk_dir(root_dir, prefix + fh.name + "/")
@@ -481,7 +478,9 @@ def parse_category(root_data, base_dir, cat_name):
             basename = filename[:-5]
             entries.append(
                 parse_entry(
-                    root_data, f"{entry_dir}/{filename}", cat_name + "/" + basename
+                    root_data,
+                    f"{entry_dir}/{filename}",
+                    f"{cat_name}/{basename}",
                 )
             )
     entries.sort(
@@ -605,7 +604,9 @@ def get_format(out, ty, value):
         return out.pair_tag("span", clazz="has-tooltip", title=value)
     if ty == "cmd_click":
         return out.pair_tag(
-            "span", clazz="has-cmd_click", title="When clicked, would execute: " + value
+            "span",
+            clazz="has-cmd_click",
+            title=f"When clicked, would execute: {value}",
         )
     if ty == "obf":
         return out.pair_tag("span", clazz="obfuscated")
@@ -617,7 +618,7 @@ def get_format(out, ty, value):
         return out.pair_tag("s")
     if ty == "underline":
         return out.pair_tag("span", style="text-decoration: underline")
-    raise ValueError("Unknown format type: " + ty)
+    raise ValueError(f"Unknown format type: {ty}")
 
 
 def entry_spoilered(root_info, entry):
@@ -645,18 +646,12 @@ def write_block(out, block):
 
 # TODO proper table
 def write_page(out, pageid, page):
-    if "anchor" in page:
-        anchor_id = pageid + "@" + page["anchor"]
-    else:
-        anchor_id = None
-
+    anchor_id = f"{pageid}@" + page["anchor"] if "anchor" in page else None
     with out.pair_tag_if(anchor_id, "div"):
         if "header" in page or "title" in page:
             with out.pair_tag("h4"):
                 if anchor_id:
-                    with out.pair_tag(
-                        "a", href="#" + anchor_id, clazz="permalink small"
-                    ):
+                    with out.pair_tag("a", href=f"#{anchor_id}", clazz="permalink small"):
                         out.empty_pair_tag("i", clazz="glyphicon glyphicon-bookmark")
                     out.empty_pair_tag("span", id=anchor_id, clazz="anchor")
                 out.text(page.get("header", page.get("title", None)))
@@ -678,7 +673,7 @@ def write_page(out, pageid, page):
                 write_block(out, page["text"])
         elif ty == "patchouli:crafting":
             with out.pair_tag("blockquote", clazz="crafting-info"):
-                out.text(f"Recipe in the book: crafting the ")
+                out.text("Recipe in the book: crafting the ")
                 first = True
                 for name in page["item_name"]:
                     if not first:
@@ -687,7 +682,7 @@ def write_page(out, pageid, page):
                     with out.pair_tag("code"):
                         out.text(name)
                 out.text(".")
-            # if "text" in page: write_block(out, page["text"])
+                    # if "text" in page: write_block(out, page["text"])
         elif ty == "patchouli:image":
             with out.pair_tag("figure"):
                 with out.pair_tag("div", clazz="img-container"):
@@ -707,7 +702,7 @@ def write_page(out, pageid, page):
             pass
         elif ty == "patchouli:smelting":
             with out.pair_tag("blockquote", clazz="crafting-info"):
-                out.text(f"Recipe in the book: smelting ")
+                out.text("Recipe in the book: smelting ")
                 with out.pair_tag("code"):
                     out.text(page["in"])
                 out.text(" into ")
@@ -723,11 +718,11 @@ def write_page(out, pageid, page):
             with out.pair_tag("blockquote", clazz="crafting-info"):
                 if len(recipes) == 1:
                     recipe = recipes[0]
-                    out.text(f"Recipe in the book: creating ")
+                    out.text("Recipe in the book: creating ")
                     with out.pair_tag("code"):
                         out.text(recipe["out"])
                 else:
-                    out.text(f"Recipes in the book: creating ")
+                    out.text("Recipes in the book: creating ")
                     with out.pair_tag("code"):
                         out.text(recipes[0]["out"])
                     for i in recipes[1:-1]:
@@ -748,13 +743,13 @@ def write_page(out, pageid, page):
                 out.text(".")
         elif ty == "botania:runic_altar":
             with out.pair_tag("blockquote", clazz="crafting-info"):
-                out.text(f"Recipe in the book: creating the ")
+                out.text("Recipe in the book: creating the ")
                 with out.pair_tag("code"):
                     out.text(page["item_name"])
                 out.text(" on a Runic Altar.")
         elif ty == "botania:petal_apothecary":
             with out.pair_tag("blockquote", clazz="crafting-info"):
-                out.text(f"Recipe in the book: Creating the ")
+                out.text("Recipe in the book: Creating the ")
                 with out.pair_tag("code"):
                     out.text(page["item_name"])
                 out.text(" in a Petal Apothecary.")
@@ -762,7 +757,7 @@ def write_page(out, pageid, page):
                 write_block(out, page["text"])
         elif ty == "botania:brew":
             with out.pair_tag("blockquote", clazz="crafting-info"):
-                out.text(f"Recipe in the book: brewing a Brew of ")
+                out.text("Recipe in the book: brewing a Brew of ")
                 with out.pair_tag("code"):
                     out.text(page["brew_name"])
                 out.text(".")
@@ -770,13 +765,13 @@ def write_page(out, pageid, page):
                 write_block(out, page["text"])
         elif ty == "botania:elven_trade":
             with out.pair_tag("blockquote", clazz="crafting-info"):
-                out.text(f"Recipe in the book: An elven trade resulting in ")
+                out.text("Recipe in the book: An elven trade resulting in ")
                 with out.pair_tag("code"):
                     out.text(page["item_name"][0])
                 out.text(".")
         elif ty == "botania:terrasteel":
             with out.pair_tag("blockquote", clazz="crafting-info"):
-                out.text(f"Recipe in the book: The ritual for creating Terrasteel.")
+                out.text("Recipe in the book: The ritual for creating Terrasteel.")
             if "text" in page:
                 write_block(out, page["text"])
         elif ty == "botania:crafting_multi":
@@ -801,7 +796,7 @@ def write_page(out, pageid, page):
                 write_block(out, page["text"])
         else:
             with out.pair_tag("p", clazz="todo-note"):
-                out.text("TODO: Missing processor for type: " + ty)
+                out.text(f"TODO: Missing processor for type: {ty}")
             if "text" in page:
                 write_block(out, page["text"])
     out.tag("br")
@@ -827,7 +822,7 @@ def write_entry(out, book, entry):
         with out.pair_tag_if(entry_spoilered(book, entry), "div", clazz="spoilered"):
             anchor = anchor_entry(entry)
             with out.pair_tag("h3", clazz="entry-title page-header"):
-                with out.pair_tag("a", href="#" + anchor, clazz="permalink small"):
+                with out.pair_tag("a", href=f"#{anchor}", clazz="permalink small"):
                     out.empty_pair_tag("i", clazz="glyphicon glyphicon-bookmark")
                 out.empty_pair_tag("span", id=anchor, clazz="anchor")
                 write_block(out, entry["name"])
@@ -880,13 +875,9 @@ def write_toc(out, book):
                 with out.pair_tag("ul"):
                     for entry in category["entries"]:
                         with out.pair_tag("li"):
-                            with out.pair_tag(
-                                "a",
-                                href="#" + anchor_entry(entry),
-                                clazz="spoilered"
-                                if entry_spoilered(book, entry)
-                                else "",
-                            ):
+                            with out.pair_tag("a", href=f"#{anchor_entry(entry)}", clazz="spoilered"
+                                                            if entry_spoilered(book, entry)
+                                                            else ""):
                                 out.text(entry["name"])
 
 
